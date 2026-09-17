@@ -3,11 +3,17 @@
 A from-scratch GPT-style language model trained on Lelouch's dialogue,
 built to actually learn transformer internals (not just ship a demo).
 
+**End goal:** a conversational interface — you send a message, the model
+responds in Lelouch's voice. Achieved via prompt-conditioned generation:
+training data is formatted as `[USER]: ...\n[LELOUCH]: ...` turns, so the
+model learns the Q&A pattern from the corpus itself (no architectural change
+needed, no separate instruction-tuning step).
+
 ## Project Vision (tiered)
 
 ```
 Tier 1 (core)     -> Lelouch-LLM: from-scratch char-level GPT trained
-                      on his dialogue from the show/movie scripts
+                      on his dialogue, with a conversational chat interface
 Tier 2 (stretch)  -> Chess algorithm tuned to mimic his playstyle,
                       with the LLM generating in-character move commentary
 Tier 3 (aspirational, later) -> TouchDesigner visual system that reacts
@@ -21,7 +27,7 @@ weights) worth piping into it.
 
 ---
 
-## Week 1 — Language modeling fundamentals
+## Week 1 — Language modeling fundamentals ✓
 
 - Implement a bigram language model on toy text (don't just follow
   along with Karpathy -- type it yourself).
@@ -29,32 +35,38 @@ weights) worth piping into it.
 - **Checkpoint:** explain in your own words why a bigram model can't
   produce coherent dialogue.
 
-## Week 2 — Self-attention, from math to code
+## Week 2 — Self-attention, from math to code ✓
 
 - Implement single-head self-attention from the raw matrix math (Q,
   K, V, scaled dot-product, softmax) before jumping to the PyTorch
   shortcut version.
 - Implement causal masking; understand why it's needed for
   autoregressive generation (vs. bidirectional attention like BERT).
+- Extend to multi-head attention.
 - **Checkpoint:** draw the attention matrix for a 4-token sequence and
   what masking removes from it.
 
-## Week 3 — Multi-head attention + transformer block
+## Week 3 — Transformer block + corpus pipeline
 
-- Extend to multi-head attention; add the MLP/feedforward block,
-  residual connections, LayerNorm.
+- Add the MLP/feedforward block, residual connections, LayerNorm to
+  complete the transformer block.
 - Understand why residuals + LayerNorm matter for training stability
   at depth (common interview question -- be able to answer it, not
   just cite it).
-- **Parallel data work:** run `extract_dialogue.py` -> `filter_and_clean.py`
-  on the scripts, inspect corpus quality.
+- **Corpus work:** run `extract_dialogue.py` → `filter_and_clean.py` on
+  Code Geass scripts. Output format must be `[USER]: ...\n[LELOUCH]: ...`
+  turn pairs -- this is the pattern the model learns conversation from.
+  Inspect corpus quality: token count, turn count, coverage of topics.
 
 ## Week 4 — Full model + training loop
 
 - Stack blocks into the complete GPT: positional embeddings, output
-  head.
+  head, configurable depth.
 - Write the training loop: cross-entropy loss, AdamW, LR schedule,
   gradient clipping.
+- Update `generate()` to accept a prompt prefix string rather than
+  empty context -- this is what enables conversation at inference time:
+  `"[USER]: <input>\n[LELOUCH]: "` becomes the seed.
 - Run `prepare.py` on the cleaned corpus, do a first small training
   run (expect bad output -- that's fine).
 - **Checkpoint:** intentionally break something (remove residuals,
@@ -72,15 +84,20 @@ weights) worth piping into it.
 
 - Add attention visualization (which tokens the model attends to) and
   a clean loss-curve plot for the writeup.
-- Qualitative generation testing at different sampling temperatures.
+- Qualitative conversation testing at different sampling temperatures:
+  does the model stay in character? Does it maintain the `[LELOUCH]:` 
+  response boundary, or bleed past it?
 - Write the README/report: architecture decisions, what worked, what
   didn't, and why. This document carries as much portfolio weight as
   the code.
 
-## Week 7 (stretch, cut without guilt if behind) — Interactive demo
+## Week 7 — Conversational chat interface
 
-- Gradio/Streamlit interface for live generation.
-- First genuinely optional week in the plan.
+- Gradio or Streamlit chat UI: text input box, response displayed in
+  character as Lelouch, conversation history fed back as context.
+- This is the deliverable that makes the project feel real -- not a
+  stretch goal. It's the difference between "I trained a model" and
+  "I built something you can talk to."
 
 ## Weeks 8+ (separate phase, not parallel) — Chess algorithm
 
