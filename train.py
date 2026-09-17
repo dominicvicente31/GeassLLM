@@ -33,7 +33,8 @@ eval_interval = 500
 learning_rate = 1e-3
 eval_iters    = 100
 n_embd        = 32   # embedding dimension
-head_size     = n_embd  # single head gets the full embedding dimension
+n_head        = 4    # number of attention heads; each gets n_embd // n_head = 8 dims
+n_layer       = 3    # transformer depth; increase when training on real corpus
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(1337)
@@ -68,13 +69,12 @@ def estimate_loss():
     return out
 
 
-# ---------------------------------------------------------------------------
 # Single-head self-attention
-# ---------------------------------------------------------------------------
 class Head(nn.Module):
 
     def __init__(self, head_size):
         super().__init__()
+        self.head_size = head_size
         # W_Q, W_K, W_V are learned linear projections — no bias, standard practice
         self.W_Q = nn.Linear(n_embd, head_size, bias=False)
         self.W_K = nn.Linear(n_embd, head_size, bias=False)
@@ -93,7 +93,7 @@ class Head(nn.Module):
         # Step 2 — scaled dot-product scores: how much does each Q match each K?
         # Scaling by 1/sqrt(head_size) keeps the variance of the dot products ≈ 1,
         # which prevents softmax from saturating into near-zero gradients.
-        scores = Q @ K.transpose(-2, -1) * head_size**-0.5  # (B, T, T)
+        scores = Q @ K.transpose(-2, -1) * self.head_size**-0.5  # (B, T, T)
 
         # Step 3 — causal mask
         # Set future positions to -inf so softmax gives them zero weight.
@@ -119,9 +119,64 @@ class Head(nn.Module):
     #     return F.scaled_dot_product_attention(Q, K, V, is_causal=True)
 
 
-# ---------------------------------------------------------------------------
+# Multi-head attention
+class MultiHeadAttention(nn.Module):
+    """Run n_head attention heads in parallel, then concatenate and project."""
+
+    def __init__(self, n_head, head_size):
+        super().__init__()
+        self.heads = nn.ModuleList([Head(head_size) for _ in range(n_head)])
+        # Project the concatenated output back to n_embd so the residual
+        # stream dimension stays constant throughout the model.
+        self.proj = nn.Linear(n_head * head_size, n_embd)
+
+    def forward(self, x):
+        # Each head produces (B, T, head_size); cat along the last dim → (B, T, n_embd)
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        return self.proj(out)
+
+
+# Feedforward / MLP block
+class FeedForward(nn.Module):
+
+    def __init__(self, n_embd):
+        super().__init__()
+        # 4x expansion follows the original Transformer paper ("Attention Is All You Need").
+        # Attention is about communication between positions; this MLP is about
+        # each position independently processing what it gathered from attention.
+        self.net = nn.Sequential(
+            nn.Linear(n_embd, 4 * n_embd),
+            nn.GELU(),
+            nn.Linear(4 * n_embd, n_embd),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+# Transformer block: attention + feedforward with residuals and LayerNorm
+class Block(nn.Module):
+
+    def __init__(self, n_embd, n_head):
+        super().__init__()
+        head_size = n_embd // n_head
+        self.sa  = MultiHeadAttention(n_head, head_size)
+        self.ff  = FeedForward(n_embd)
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
+
+    def forward(self, x):
+        # Pre-norm: normalize *before* the sublayer rather than after.
+        # Original Transformer used post-norm, but pre-norm is empirically more
+        # stable at depth because the residual path stays unscaled.
+        # Residuals let gradients flow directly back through the network,
+        # making deep stacks trainable where they'd otherwise vanish.
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ff(self.ln2(x))
+        return x
+
+
 # Language model
-# ---------------------------------------------------------------------------
 class LanguageModel(nn.Module):
 
     def __init__(self):
@@ -130,7 +185,8 @@ class LanguageModel(nn.Module):
         # Positional embedding is necessary because attention is permutation-invariant:
         # without it, "abc" and "bca" produce identical attention outputs.
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.sa_head = Head(head_size)
+        self.blocks  = nn.Sequential(*[Block(n_embd, n_head) for _ in range(n_layer)])
+        self.ln_f    = nn.LayerNorm(n_embd)  # final norm before lm_head (GPT-2 style)
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def forward(self, idx, targets=None):
@@ -139,7 +195,8 @@ class LanguageModel(nn.Module):
         tok_emb = self.token_embedding_table(idx)                                # (B, T, n_embd)
         pos_emb = self.position_embedding_table(torch.arange(T, device=device)) # (T, n_embd)
         x       = tok_emb + pos_emb   # broadcast: (B, T, n_embd)
-        x       = self.sa_head(x)     # (B, T, head_size)
+        x       = self.blocks(x)      # n_layer transformer blocks
+        x       = self.ln_f(x)
         logits  = self.lm_head(x)     # (B, T, vocab_size)
 
         loss = None
@@ -158,6 +215,33 @@ class LanguageModel(nn.Module):
             idx = torch.cat([idx, idx_next], dim=1)
         return idx
 
+    def chat(self, user_message, max_new_tokens=200):
+        # Requires a corpus trained with [USER]:/[LELOUCH]: turn format.
+        # Will raise ValueError on the toy corpus — [, ], : are not in vocab.
+        prompt = f"[USER]: {user_message}\n[LELOUCH]: "
+        try:
+            idx = torch.tensor(encode(prompt), dtype=torch.long).unsqueeze(0).to(device)
+        except KeyError as e:
+            raise ValueError(
+                f"Character {e} not in vocab. chat() requires a corpus "
+                "formatted with [USER]:/[LELOUCH]: turns."
+            ) from e
+
+        out  = self.generate(idx, max_new_tokens)
+        full = decode(out[0].tolist())
+
+        # Extract only the final [LELOUCH]: response
+        marker = "[LELOUCH]: "
+        start  = full.rfind(marker)
+        if start == -1:
+            return full.strip()
+        response = full[start + len(marker):]
+        # Truncate if the model bleeds into the next [USER]: turn
+        cutoff = response.find("[USER]:")
+        if cutoff != -1:
+            response = response[:cutoff]
+        return response.strip()
+
 
 # --- Training ---
 model = LanguageModel().to(device)
@@ -174,7 +258,10 @@ for step in range(max_iters):
     loss.backward()
     optimizer.step()
 
-# --- Sample ---
+# --- Sample (toy corpus) ---
 print("\n--- generated text ---")
 context = torch.zeros((1, 1), dtype=torch.long, device=device)
 print(decode(model.generate(context, max_new_tokens=200)[0].tolist()))
+
+# --- Conversation (uncomment once trained on real corpus) ---
+# print(model.chat("What is your true goal, Zero?"))
