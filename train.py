@@ -1,21 +1,18 @@
+import math
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
+from pathlib import Path
 
-# --- Toy text ---
-text = (
-    "All men are not created equal. Some are born swifter afoot, some with greater beauty, "
-    "some are born into poverty, and others are born sick and feeble. "
-    "Both in birth and in upbringing, in sheer scope of ability, every human is inherently different. "
-    "Yes, that is why people discriminate against one another, which is why there is struggle, "
-    "competition, and the unfaltering march of progress. "
-    "Inequality is not wrong -- it is the very foundation of civilization. "
-    "What I propose is the elimination of inequality itself. "
-    "No more. I will stand in the way of that inequality. "
-    "I hereby proclaim: all people are created equal, and I will enforce that principle "
-    "by any means necessary. This is my declaration. This is my absolute command. "
-    "The sword that strikes down falsehood shall be mine. I am Zero, the man who will remake the world."
-)
+# --- Corpus ---
+scripts_dir = Path(__file__).parent / "data" / "scripts"
+script_files = [f for f in sorted(scripts_dir.glob("*.txt")) if f.stat().st_size > 0]
+
+if not script_files:
+    raise FileNotFoundError(f"No non-empty .txt files found in {scripts_dir}. Add episode scripts before training.")
+
+text = "\n".join(f.read_text(encoding="utf-8") for f in script_files)
+print(f"Loaded {len(script_files)} episode(s) — {len(text):,} characters")
 
 # --- Character-level tokenizer ---
 chars = sorted(set(text))
@@ -27,14 +24,16 @@ decode = lambda ids: ''.join(itos[i] for i in ids)
 
 # --- Hyperparameters ---
 batch_size    = 32
-block_size    = 8
+block_size    = 128  # ~2-4 lines of dialogue per context window
 max_iters     = 5000
 eval_interval = 500
 learning_rate = 1e-3
 eval_iters    = 100
-n_embd        = 32   # embedding dimension
-n_head        = 4    # number of attention heads; each gets n_embd // n_head = 8 dims
-n_layer       = 3    # transformer depth; increase when training on real corpus
+n_embd        = 128  # embedding dimension
+n_head        = 4    # number of attention heads; each gets n_embd // n_head = 32 dims
+n_layer       = 6    # transformer depth
+dropout       = 0.2  # fraction of activations zeroed during training
+warmup_iters  = 200  # steps over which LR ramps from 0 → learning_rate
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 torch.manual_seed(1337)
@@ -69,6 +68,15 @@ def estimate_loss():
     return out
 
 
+def get_lr(step):
+    # Linear warmup: avoids a large gradient spike on step 0 when weights are random.
+    if step < warmup_iters:
+        return learning_rate * (step + 1) / warmup_iters
+    # Cosine decay from learning_rate → 0 over the remaining steps.
+    progress = (step - warmup_iters) / (max_iters - warmup_iters)
+    return learning_rate * 0.5 * (1.0 + math.cos(math.pi * progress))
+
+
 # Single-head self-attention
 class Head(nn.Module):
 
@@ -81,6 +89,7 @@ class Head(nn.Module):
         self.W_V = nn.Linear(n_embd, head_size, bias=False)
         # Lower-triangular mask stored as a buffer (not a trainable parameter)
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
+        self.attn_dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         _, T, _ = x.shape
@@ -105,6 +114,7 @@ class Head(nn.Module):
 
         # Step 4 — softmax: turn scores into a probability distribution per row
         weights = F.softmax(scores, dim=-1)  # (B, T, T)
+        weights = self.attn_dropout(weights)
 
         # Step 5 — weighted sum of values
         out = weights @ V  # (B, T, head_size)
@@ -129,11 +139,12 @@ class MultiHeadAttention(nn.Module):
         # Project the concatenated output back to n_embd so the residual
         # stream dimension stays constant throughout the model.
         self.proj = nn.Linear(n_head * head_size, n_embd)
+        self.proj_dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         # Each head produces (B, T, head_size); cat along the last dim → (B, T, n_embd)
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        return self.proj(out)
+        return self.proj_dropout(self.proj(out))
 
 
 # Feedforward / MLP block
@@ -148,6 +159,7 @@ class FeedForward(nn.Module):
             nn.Linear(n_embd, 4 * n_embd),
             nn.GELU(),
             nn.Linear(4 * n_embd, n_embd),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -252,10 +264,14 @@ for step in range(max_iters):
         losses = estimate_loss()
         print(f"step {step:4d}: train loss {losses['train']:.4f}  val loss {losses['val']:.4f}")
 
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = get_lr(step)
+
     xb, yb = get_batch('train')
     _, loss = model(xb, yb)
     optimizer.zero_grad(set_to_none=True)
     loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     optimizer.step()
 
 # --- Sample (toy corpus) ---
