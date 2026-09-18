@@ -25,14 +25,14 @@ decode = lambda ids: ''.join(itos[i] for i in ids)
 # --- Hyperparameters ---
 batch_size    = 32
 block_size    = 128  # ~2-4 lines of dialogue per context window
-max_iters     = 5000
+max_iters     = 10000
 eval_interval = 500
 learning_rate = 1e-3
 eval_iters    = 100
 n_embd        = 128  # embedding dimension
 n_head        = 4    # number of attention heads; each gets n_embd // n_head = 32 dims
-n_layer       = 6    # transformer depth
-dropout       = 0.2  # fraction of activations zeroed during training
+n_layer       = 4    # transformer depth
+dropout       = 0.25 # fraction of activations zeroed during training
 warmup_iters  = 200  # steps over which LR ramps from 0 → learning_rate
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -257,7 +257,7 @@ class LanguageModel(nn.Module):
 
 # --- Training ---
 model = LanguageModel().to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
 
 for step in range(max_iters):
     if step % eval_interval == 0:
