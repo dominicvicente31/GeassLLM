@@ -45,7 +45,7 @@ weights) worth piping into it.
 - **Checkpoint:** draw the attention matrix for a 4-token sequence and
   what masking removes from it.
 
-## Week 3 — Transformer block + corpus pipeline (in progress)
+## Week 3 — Transformer block + corpus pipeline ✓
 
 Architecture:
 - ✓ MLP/feedforward block (4× expansion, GELU activation).
@@ -55,31 +55,36 @@ Architecture:
 - ✓ Understand why residuals + LayerNorm matter for training stability
   at depth.
 
-Corpus pipeline (not started):
-- [ ] Write `extract_dialogue.py` → `filter_and_clean.py` to pull
-  Lelouch lines from Code Geass scripts.
-- [ ] Format output as `[USER]: ...\n[LELOUCH]: ...` turn pairs --
-  this is the pattern the model learns conversation from.
-- [ ] Inspect corpus quality: token count, turn count, topic coverage.
+Corpus pipeline:
+- ✓ Assembled 49 episodes of Lelouch-only dialogue (155,608 characters)
+  sourced and cleaned manually into per-episode `.txt` files.
+- ✓ Inspected corpus: 44,523 BPE tokens, ~130 unique characters.
 
-## Week 4 — Full model + training loop (partially done)
+## Week 4 — Full model + training loop ✓
 
 - ✓ Stacked transformer blocks with configurable depth (`n_layer`).
 - ✓ Token + positional embeddings, output head (`lm_head`).
 - ✓ Training loop with cross-entropy loss and AdamW.
-- ✓ Add LR schedule (linear warmup + cosine decay).
-- ✓ Add gradient clipping (`torch.nn.utils.clip_grad_norm_`).
+- ✓ LR schedule (linear warmup + cosine decay).
+- ✓ Gradient clipping (`torch.nn.utils.clip_grad_norm_`).
 - ✓ `chat()` method seeds generation from `"[USER]: ...\n[LELOUCH]: "` prefix.
-- [ ] Run `prepare.py` on the cleaned corpus, do a first small
-  training run (expect bad output -- that's fine).
+- ✓ Full training run on Lelouch corpus via Google Colab (GPU).
 - **Checkpoint:** intentionally break something (remove residuals,
   remove masking) and observe how training degrades.
 
-## Week 5 — Real training, diagnosis, iteration
+## Week 5 — Real training, diagnosis, iteration ✓
 
-- Train on the full Lelouch corpus, track train/val loss.
-- Diagnose overfitting (val loss rising while train falls) vs.
-  underfitting; adjust model size, dropout, context length.
+- ✓ Trained from-scratch model on full corpus; tracked train/val loss.
+- ✓ Diagnosed overfitting: original config (n_layer=6, dropout=0.2)
+  produced train/val gap of 0.40 at 5k steps.
+- ✓ Iterated: reduced n_layer 6→4, increased dropout 0.2→0.25,
+  added weight_decay=0.05, extended to 10k steps.
+  Final gap: 0.08 (train 1.40, val 1.48).
+- ✓ Identified data ceiling (~155K chars) as the primary bottleneck.
+- ✓ Implemented GPT-2 fine-tuning (`finetune_gpt2.py`) as the path
+  past the data ceiling: pretrained weights provide English fluency,
+  fine-tuning adapts to Lelouch's style. Output quality is
+  significantly better from the same corpus.
 - **Focus skill:** reading a loss curve and making informed changes --
   arguably the most interview-relevant skill in the project.
 
