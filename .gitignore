@@ -1,0 +1,22 @@
+# Personal knowledge check answers — not for public repo
+_answers/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Model checkpoints and data
+*.pt
+*.pth
+*.bin
+
+# Copyrighted script files
+data/
