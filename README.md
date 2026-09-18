@@ -1,29 +1,45 @@
 # GeassLLM
 
-A GPT-style language model built from scratch and trained on Lelouch vi Britannia's dialogue from *Code Geass*. The goal is to deeply understand transformer internals — not just run a demo, but be able to explain every architectural decision.
+A GPT-style language model built from scratch and trained on Lelouch vi Britannia's dialogue from *Code Geass*. The end goal is a conversational interface — you send a message, the model responds in Lelouch's voice.
+
+Built to deeply understand transformer internals, not just run a demo. Every architectural decision has a reason.
 
 ## What this is
 
-This project builds a character-level autoregressive transformer, incrementally, from the ground up:
+A character-level autoregressive transformer, built incrementally from the ground up:
 
 - Bigram language model (baseline)
-- Single-head self-attention with causal masking
+- Single-head self-attention with causal masking (Q, K, V, scaled dot-product)
 - Multi-head attention
-- Full transformer block (MLP, residual connections, LayerNorm)
-- Complete GPT training loop on the Lelouch corpus
+- Full transformer block: MLP, residual connections, LayerNorm (pre-norm)
+- Stacked transformer blocks with configurable depth
+- Conversational generation via prompt-conditioned inference — no instruction tuning required
 
-The model learns to generate text in Lelouch's speaking style — declarative, strategic, theatrical.
+The model learns Lelouch's voice from his dialogue corpus. At inference, a `[USER]: ...\n[LELOUCH]: ` prefix seeds the generation, producing in-character responses without any separate fine-tuning step.
+
+## Architecture
+
+| Component | Detail |
+|---|---|
+| Tokenization | Character-level |
+| Attention | Multi-head, causal masking |
+| Block | Pre-norm transformer (MHA → FFN, residuals on both) |
+| FFN | 4× expansion, GELU |
+| Depth | Configurable via `n_layer` |
+| Optimizer | AdamW |
 
 ## Project structure
 
 ```
-train.py              — model architecture and training loop (evolves each week)
-GeassLLM-ROADMAP.md   — week-by-week build plan
+train.py                        — model architecture and training loop
+GeassLLM-ROADMAP.md             — week-by-week build plan
+GeassLLM-dev-KnowledgeChecks/   — weekly knowledge checks (questions only)
+data/scripts/                   — Lelouch dialogue scripts, one file per episode
 ```
 
 ## Current state
 
-Single-head self-attention with causal masking implemented. Multi-head attention added. Training on toy text. Full corpus and transformer block coming in subsequent weeks.
+Full transformer block implemented (MHA + FFN + residuals + LayerNorm, stacked `n_layer` deep). Training on toy text. Lelouch corpus and real training run in progress.
 
 ## Running it
 
@@ -36,6 +52,5 @@ py train.py
 
 ## Notes
 
-- Trained on publicly available *Code Geass* scripts
-- Not for distribution due to copyright
+- Trained on *Code Geass* scripts — not for distribution due to copyright
 - Built for learning and portfolio purposes

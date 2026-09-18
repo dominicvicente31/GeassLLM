@@ -29,46 +29,49 @@ weights) worth piping into it.
 
 ## Week 1 — Language modeling fundamentals ✓
 
-- Implement a bigram language model on toy text (don't just follow
-  along with Karpathy -- type it yourself).
-- Understand *why* a bigram model can't capture long-range structure.
+- ✓ Implement a bigram language model on toy text.
+- ✓ Understand *why* a bigram model can't capture long-range structure.
 - **Checkpoint:** explain in your own words why a bigram model can't
   produce coherent dialogue.
 
 ## Week 2 — Self-attention, from math to code ✓
 
-- Implement single-head self-attention from the raw matrix math (Q,
-  K, V, scaled dot-product, softmax) before jumping to the PyTorch
-  shortcut version.
-- Implement causal masking; understand why it's needed for
+- ✓ Implement single-head self-attention from the raw matrix math (Q,
+  K, V, scaled dot-product, softmax) with the PyTorch shortcut shown
+  as a commented alternative.
+- ✓ Implement causal masking; understand why it's needed for
   autoregressive generation (vs. bidirectional attention like BERT).
-- Extend to multi-head attention.
+- ✓ Extend to multi-head attention.
 - **Checkpoint:** draw the attention matrix for a 4-token sequence and
   what masking removes from it.
 
-## Week 3 — Transformer block + corpus pipeline
+## Week 3 — Transformer block + corpus pipeline (in progress)
 
-- Add the MLP/feedforward block, residual connections, LayerNorm to
-  complete the transformer block.
-- Understand why residuals + LayerNorm matter for training stability
-  at depth (common interview question -- be able to answer it, not
-  just cite it).
-- **Corpus work:** run `extract_dialogue.py` → `filter_and_clean.py` on
-  Code Geass scripts. Output format must be `[USER]: ...\n[LELOUCH]: ...`
-  turn pairs -- this is the pattern the model learns conversation from.
-  Inspect corpus quality: token count, turn count, coverage of topics.
+Architecture:
+- ✓ MLP/feedforward block (4× expansion, GELU activation).
+- ✓ Residual connections and pre-norm LayerNorm on both sublayers.
+- ✓ Full transformer block assembled; stacked `n_layer` deep with a
+  final LayerNorm before the output head (GPT-2 style).
+- ✓ Understand why residuals + LayerNorm matter for training stability
+  at depth.
 
-## Week 4 — Full model + training loop
+Corpus pipeline (not started):
+- [ ] Write `extract_dialogue.py` → `filter_and_clean.py` to pull
+  Lelouch lines from Code Geass scripts.
+- [ ] Format output as `[USER]: ...\n[LELOUCH]: ...` turn pairs --
+  this is the pattern the model learns conversation from.
+- [ ] Inspect corpus quality: token count, turn count, topic coverage.
 
-- Stack blocks into the complete GPT: positional embeddings, output
-  head, configurable depth.
-- Write the training loop: cross-entropy loss, AdamW, LR schedule,
-  gradient clipping.
-- Update `generate()` to accept a prompt prefix string rather than
-  empty context -- this is what enables conversation at inference time:
-  `"[USER]: <input>\n[LELOUCH]: "` becomes the seed.
-- Run `prepare.py` on the cleaned corpus, do a first small training
-  run (expect bad output -- that's fine).
+## Week 4 — Full model + training loop (partially done)
+
+- ✓ Stacked transformer blocks with configurable depth (`n_layer`).
+- ✓ Token + positional embeddings, output head (`lm_head`).
+- ✓ Training loop with cross-entropy loss and AdamW.
+- ✓ Add LR schedule (linear warmup + cosine decay).
+- ✓ Add gradient clipping (`torch.nn.utils.clip_grad_norm_`).
+- ✓ `chat()` method seeds generation from `"[USER]: ...\n[LELOUCH]: "` prefix.
+- [ ] Run `prepare.py` on the cleaned corpus, do a first small
+  training run (expect bad output -- that's fine).
 - **Checkpoint:** intentionally break something (remove residuals,
   remove masking) and observe how training degrades.
 
