@@ -139,11 +139,12 @@ class MultiHeadAttention(nn.Module):
         # Project the concatenated output back to n_embd so the residual
         # stream dimension stays constant throughout the model.
         self.proj = nn.Linear(n_head * head_size, n_embd)
+        self.proj_dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         # Each head produces (B, T, head_size); cat along the last dim → (B, T, n_embd)
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        return self.proj(out)
+        return self.proj_dropout(self.proj(out))
 
 
 # Feedforward / MLP block
@@ -158,6 +159,7 @@ class FeedForward(nn.Module):
             nn.Linear(n_embd, 4 * n_embd),
             nn.GELU(),
             nn.Linear(4 * n_embd, n_embd),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
