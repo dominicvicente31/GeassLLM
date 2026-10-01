@@ -4,9 +4,9 @@ from torch.utils.data import Dataset, DataLoader
 from transformers import GPT2LMHeadModel, GPT2Tokenizer, get_linear_schedule_with_warmup
 
 # --- Corpus ---
-scripts_dir = Path(__file__).parent / "data" / "scripts"
+scripts_dir = Path(__file__).parent / "data" / "LelouchQAScripts"
 # In Colab, replace the line above with:
-# scripts_dir = Path("/content/drive/MyDrive/GeassLLM/data/scripts")
+# scripts_dir = Path("/content/drive/MyDrive/GeassLLM/data/LelouchQAScripts")
 
 script_files = [f for f in sorted(scripts_dir.glob("*.txt")) if f.stat().st_size > 0]
 if not script_files:
@@ -38,7 +38,7 @@ class TextDataset(Dataset):
 # --- Hyperparameters ---
 block_size    = 256
 batch_size    = 8
-num_epochs    = 5
+num_epochs    = 10
 learning_rate = 5e-5
 warmup_steps  = 100
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -74,6 +74,9 @@ def eval_loss():
 
 
 # --- Training ---
+best_val  = float('inf')
+best_epoch = 0
+
 for epoch in range(num_epochs):
     total_loss = 0
     for batch in train_loader:
@@ -89,6 +92,14 @@ for epoch in range(num_epochs):
     train_loss = total_loss / len(train_loader)
     val_loss   = eval_loss()
     print(f"Epoch {epoch+1:2d}/{num_epochs}: train loss {train_loss:.4f}  val loss {val_loss:.4f}")
+
+    if val_loss < best_val:
+        best_val   = val_loss
+        best_epoch = epoch + 1
+        model.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
+        tokenizer.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
+
+print(f"\nBest checkpoint: epoch {best_epoch} (val loss {best_val:.4f})")
 
 # --- Generate sample ---
 model.eval()
@@ -106,6 +117,46 @@ with torch.no_grad():
 print("\n--- Generated ---")
 print(tokenizer.decode(output[0], skip_special_tokens=True))
 
-# --- Save to Drive (uncomment in Colab) ---
-# model.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
-# tokenizer.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
+# --- Save to Drive ---
+model.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
+tokenizer.save_pretrained("/content/drive/MyDrive/GeassLLM/gpt2_lelouch")
+print("Model saved.")
+
+
+# ---------------------------------------------------------------------------
+# Load + chat  (run this cell on its own after training, no need to retrain)
+# ---------------------------------------------------------------------------
+SAVE_DIR = "/content/drive/MyDrive/GeassLLM/gpt2_lelouch"
+
+def load_model(save_dir=SAVE_DIR):
+    tok   = GPT2Tokenizer.from_pretrained(save_dir)
+    mdl   = GPT2LMHeadModel.from_pretrained(save_dir).to(device)
+    mdl.eval()
+    return mdl, tok
+
+
+def chat(message, mdl, tok, max_new_tokens=200, temperature=0.6, top_p=0.9):
+    prompt    = message
+    input_ids = tok.encode(prompt, return_tensors="pt").to(device)
+    with torch.no_grad():
+        output = mdl.generate(
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=True,
+            pad_token_id=tok.eos_token_id,
+            repetition_penalty=1.3,
+        )
+    full     = tok.decode(output[0], skip_special_tokens=True)
+    marker   = "[LELOUCH]: "
+    start    = full.rfind(marker)
+    response = full[start + len(marker):] if start != -1 else full
+    cutoff   = response.find("[USER]:")
+    return response[:cutoff].strip() if cutoff != -1 else response.strip()
+
+
+# --- Example usage (run in its own Colab cell) ---
+# mdl, tok = load_model()
+# print(chat("What is your true goal, Zero?", mdl, tok))
+# print(chat("Do you ever doubt yourself?", mdl, tok))

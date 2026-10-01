@@ -48,9 +48,24 @@ GPT-2 loss operates on a 50K BPE vocab vs 130-char vocab, so the numbers are not
 ```
 train.py                        — from-scratch character-level GPT
 finetune_gpt2.py                — GPT-2 fine-tuning via HuggingFace
+extract_dialogue.py             — parses episode scripts → per-episode QA pair files
 GeassLLM-ROADMAP.md             — week-by-week build plan
 GeassLLM-dev-KnowledgeChecks/   — weekly knowledge checks (questions only)
-data/scripts/                   — Lelouch dialogue scripts, one file per episode
+data/
+  full_scripts/                 — raw episode transcripts (Speaker: line format)
+  LelouchQAScripts/             — extracted QA pairs (Lelouch#NN.txt, one per episode)
+```
+
+## Data pipeline
+
+`extract_dialogue.py` reads every `.txt` in `data/full_scripts/`, extracts turns where
+Lelouch responds to another character, and writes per-episode `Lelouch#NN.txt` files in
+`[USER]: ...\n[LELOUCH]: ...` format to `data/LelouchQAScripts/`. Season 1 (25 episodes)
+yields 911 QA pairs.
+
+```
+pip install torch
+python extract_dialogue.py
 ```
 
 ## Running it

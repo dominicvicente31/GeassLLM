@@ -56,8 +56,12 @@ Architecture:
   at depth.
 
 Corpus pipeline:
-- ✓ Assembled 49 episodes of Lelouch-only dialogue (155,608 characters)
-  sourced and cleaned manually into per-episode `.txt` files.
+- ✓ Assembled 50 episodes of Lelouch dialogue sourced and cleaned into
+  per-episode `.txt` files under `data/full_scripts/`.
+- ✓ Built `extract_dialogue.py`: parses `Speaker: line` transcripts,
+  extracts (prompt, response) pairs where Lelouch responds to another
+  character, and writes per-episode `Lelouch#NN.txt` files to
+  `data/LelouchQAScripts/`. Season 1 (25 episodes): 911 QA pairs.
 - ✓ Inspected corpus: 44,523 BPE tokens, ~130 unique characters.
 
 ## Week 4 — Full model + training loop ✓
